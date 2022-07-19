@@ -179,7 +179,7 @@ statement:	        var ASSIGN expression
 			temp += ":= " + end + "\n";
 			temp += ": " + start + "\n";
 			term.append($4.code);
-			term += ": " + after + "\n";
+			term += ": " + end + "\n";
 		   	$$.code = strdup(temp.c_str());
 		    }
     |               IF boolexpr THEN statements ELSE statements ENDIF 
@@ -193,7 +193,7 @@ statement:	        var ASSIGN expression
                         temp += ":= " + end + "\n";
                         temp += ": " + start + "\n";
                         term.append($4.code);
-                        term += ": " + after + "\n";
+                        term += ": " + end + "\n";
                         $$.code = strdup(temp.c_str());
                     }			
 	|               WHILE boolexpr BEGINLOOP statements ENDLOOP {printf("statement -> WHILE boolexpr BEGINLOOP statements ENDLOOP\n");}
