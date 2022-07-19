@@ -67,7 +67,11 @@ functions:          /*empty*/
                             printf("Error: No main function declared");
                     }	
     |               function functions 
-                    {
+                    {   
+                        std::string temp;
+                        temp.append($1.code);
+                        temp.append($2.code);
+                        $$.code = strdup(temp.c_str());
                     }
     ;
 
@@ -79,23 +83,66 @@ function:	        FUNCTION identifier SEMICOLON BEGIN_PARAMS declarations END_PA
                         std::string s = $2.place;
                         if (s == "main")
                             mainFunc = true;
+                        funcs += $2.place;
                         std::string decs = $5.code;
                         int decNum = 0;
                         while(decs.find(".") != std::string::npos){
                             int pos = decs.find(".");
+                            pos = decs.find(" ", pos);
+                            pos++;
+                            ident = decs.substr(pos, (decs.find("\n", pos) - pos));
+                            temp += ". " + ident + "\n";
+                            temp += "= " + ident + ", $" +  std::to_string(decNum) + "\n";
+                            decs = decs.substr(pos);
+                            decNum++;
                         }
+                        temp.append($8.code);
+                        temp.append($11.code);
+                        temp.append("endfunc\n")
+                        $$.code = strdup(temp.c_str());
+                        $$.place = "";
                     }
     ;
 
 declarations:       /*empty*/ 
                     {
+                        $$.code = strdup("");
+                        $$.place = strdup("");
                     }
-    |               declaration SEMICOLON declarations {printf("declarations -> declaration SEMICOLON declarations\n");} 
+    |               declaration SEMICOLON declarations 
+                    {
+                        std::string temp;
+                        temp.append($1.code);
+                        temp.append($3.code);
+                        $$.code = strdup(temp.c_str());
+                        $$.place = strdup("");
+                    } 
     ;
 
 declaration:        identifiers COLON ENUM L_PAREN identifiers R_PAREN {printf("declaration -> identifiers COLON ENUM L_PAREN identifiers R_PAREN\n");}
-	  |               identifiers COLON INTEGER {printf("declaration -> identifiers COLON INTEGER\n");}
-	  |               identifiers COLON ARRAY L_SQUARE_BRACKET NUMBER R_SQUARE_BRACKET OF INTEGER {printf("declaration -> COLON ARRAY L_SQUARE_BRACKET NUMBER %d R_SQUARE_BRACKET OF INTEGER\n", $5);}
+	  |             identifiers COLON INTEGER 
+                    {
+                        std::string temp;
+                        temp.append($1.code);
+                        int pos;
+                        std::string ident;
+                        while(temp.find("|") != std::string::npos){
+                            pos = temp.find("|");
+                            temp.erase(pos, 1);
+                            pos++;
+                            ident = temp.substr(pos, (temp.find("\n", pos) - pos));
+                            if (reserved.find(ident) != reserved.end())
+                                printf("Invalid identifier, %s is reserved", ident.c_str());
+                            else if(funcs.find(ident) != funcs.end() && varTemp.find(ident) != varTemp.end()){
+                                printf("Identifier %s is doubly declared", ident.c_str());
+                            }
+                            else {
+                                varTemp[ident];
+                            }
+                        }
+                        $$.code = strdup(temp.c_str());
+                    }
+	  |             identifiers COLON ARRAY L_SQUARE_BRACKET NUMBER R_SQUARE_BRACKET OF INTEGER {printf("declaration -> COLON ARRAY L_SQUARE_BRACKET NUMBER %d R_SQUARE_BRACKET OF INTEGER\n", $5);}
     ;
 
 statements: 	    statement SEMICOLON statements 
@@ -185,7 +232,7 @@ relationexpr:	    expression comp expression
                         $$.code = strdup("");
                         $$.place = strdup(temp.c_str());
                     }
-            |               FALSE
+            |       FALSE
                     {
                         std::string temp;
                         temp.append("0");
@@ -296,11 +343,18 @@ vars:               var
     ;
 
 identifiers:        identifier COMMA identifiers 
-                    {printf("identifiers -> identifier COMMA identifiers\n");}
+                    {
+                        std::string temp;
+                        temp += ".| " + $1.place + "\n";
+                        temp.append($3.code);
+                        $$.code = strdup(temp).c_str();
+
+                    }
     |               identifier 
                     {
-                        $$.code = strdup($1.code);
-                        $$.place = strdup($1.place);
+                        std::string temp;
+                        temp += ".| " + $1.place + "\n";
+                        $$.code = strdup(temp).c_str();
                     }
     ;
 
@@ -554,7 +608,9 @@ var:                identifier
     ;
   
 expressions:        /*empty*/ 
-                    {                       
+                    {   
+                        $$.code = strdup("");
+                        $$.place = strdup("");                            
                     }
     |               expression 
                     {
