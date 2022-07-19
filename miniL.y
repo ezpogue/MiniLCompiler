@@ -169,8 +169,33 @@ statement:	        var ASSIGN expression
                         temp += $1.place + ", " + $3.place "\n";
                         $$.code = strdup(temp.cstring());
                     }
-    |               IF boolexpr THEN statements ENDIF {printf("statement -> IF boolexpr THEN statements ENDIF\n");}
-    |               IF boolexpr THEN statements ELSE statements ENDIF {printf("statement -> IF boolexpr THEN statements ELSE statements ENDIF\n");}
+    |               IF boolexpr THEN statements ENDIF
+		    {
+			std::string temp;
+			std::string start = new_label();
+			std::string end = new_label();
+			temp.append($2.code);
+			temp += "?:= " + start + ", " + $2.place + "\n";
+			temp += ":= " + end + "\n";
+			temp += ": " + start + "\n";
+			term.append($4.code);
+			term += ": " + after + "\n";
+		   	$$.code = strdup(temp.c_str());
+		    }
+    |               IF boolexpr THEN statements ELSE statements ENDIF 
+		    {
+                        std::string temp;
+                        std::string start = new_label();
+                        std::string end = new_label();
+                        temp.append($2.code);
+                        temp += "?:= " + start + ", " + $2.place + "\n";
+			temp.append($6.code);
+                        temp += ":= " + end + "\n";
+                        temp += ": " + start + "\n";
+                        term.append($4.code);
+                        term += ": " + after + "\n";
+                        $$.code = strdup(temp.c_str());
+                    }			
 	|               WHILE boolexpr BEGINLOOP statements ENDLOOP {printf("statement -> WHILE boolexpr BEGINLOOP statements ENDLOOP\n");}
     |               DO BEGINLOOP statements ENDLOOP WHILE boolexpr {printf("statement -> DO BEGINLOOP statements ENDLOOP WHILE boolexpr\n");}
     |               READ vars {printf("statement -> READ vars\n");}
