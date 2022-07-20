@@ -151,7 +151,7 @@ declarations:       /*empty*/
                     } 
     ;
 
-declaration:        identifiers COLON ENUM L_PAREN identifiers R_PAREN {printf("declaration -> identifiers COLON ENUM L_PAREN identifiers R_PAREN\n");}
+declaration:        identifiers COLON ENUM L_PAREN identifiers R_PAREN {}
 	  |             identifiers COLON INTEGER 
                     {
                         std::string temp;
@@ -316,7 +316,7 @@ statement:	        var ASSIGN expression
                         temp.append($2.code);
                         while(temp.find("|") != std::string::npos){
                             int pos = temp.find("|");
-                            temp.replace(pos, 1, "<");
+                            temp.replace(pos, 1, ">");
                         }
                         $$.code = strdup(temp.c_str());
                     }

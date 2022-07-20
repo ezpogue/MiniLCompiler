@@ -7,3 +7,4 @@ miniL-parser.cpp
 miniL-parser.hpp
 stack.hh
 *.mil
+mil_run
