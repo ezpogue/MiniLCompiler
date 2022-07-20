@@ -9,6 +9,8 @@
 
 int tempCount = 0;
 int labelCount = 0;
+bool errorFlag = false;
+char* filename = "";
 extern char* yytext;
 extern int currLine;
 extern int currPos;
@@ -25,7 +27,7 @@ void yyerror(const char *msg);
 int yylex();
 std::string new_temp();
 std::string new_label();
-FILE * yyin;
+extern FILE * yyin;
 %}
 
 %union{
@@ -58,13 +60,29 @@ FILE * yyin;
 
 %%
 
-program:            functions {}
+program:            functions 
+                    {
+                        if(errorFlag){
+                            exit(1);
+                        }
+                        else{
+                            strcat(filename, ".mil");
+                            FILE * output;
+                            output = fopen(filename, "w");
+                            if(output != NULL){
+                                fputs($1.code, output);
+                                fclose(output);
+                            }
+                        }
+                    }
 	  ;
 
 functions:          /*empty*/ 
                     {
-                        if(!mainFunc)
-                            printf("Error: No main function declared");
+                        if(!mainFunc){
+                            printf("Line %d: No main function declared", currLine);
+                            errorFlag = true;
+                        }
                     }	
     |               function functions 
                     {   
@@ -83,14 +101,14 @@ function:	        FUNCTION identifier SEMICOLON BEGIN_PARAMS declarations END_PA
                         std::string s = $2.place;
                         if (s == "main")
                             mainFunc = true;
-                        funcs += $2.place;
+                        funcs.insert($2.place);
                         std::string decs = $5.code;
                         int decNum = 0;
                         while(decs.find(".") != std::string::npos){
                             int pos = decs.find(".");
                             pos = decs.find(" ", pos);
                             pos++;
-                            ident = decs.substr(pos, (decs.find("\n", pos) - pos));
+                            std::string ident = decs.substr(pos, (decs.find("\n", pos) - pos));
                             temp += ". " + ident + "\n";
                             temp += "= " + ident + ", $" +  std::to_string(decNum) + "\n";
                             decs = decs.substr(pos);
@@ -98,9 +116,13 @@ function:	        FUNCTION identifier SEMICOLON BEGIN_PARAMS declarations END_PA
                         }
                         temp.append($8.code);
                         temp.append($11.code);
-                        temp.append("endfunc\n")
+                        temp.append("endfunc\n");
+                        if (temp.find("CONTINUE") != std::string::npos){
+                            printf("Line %d: Continue used outside of loop", currLine);
+                            errorFlag = true;
+                        }
                         $$.code = strdup(temp.c_str());
-                        $$.place = "";
+                        $$.place = strdup("");
                     }
     ;
 
@@ -131,18 +153,53 @@ declaration:        identifiers COLON ENUM L_PAREN identifiers R_PAREN {printf("
                             temp.erase(pos, 1);
                             pos++;
                             ident = temp.substr(pos, (temp.find("\n", pos) - pos));
-                            if (reserved.find(ident) != reserved.end())
-                                printf("Invalid identifier, %s is reserved", ident.c_str());
+                            if (reserved.find(ident) != reserved.end()){
+                                printf("Line %d: Invalid identifier, %s is reserved", currLine, ident.c_str());
+                                errorFlag = true;
+                            }
                             else if(funcs.find(ident) != funcs.end() && varTemp.find(ident) != varTemp.end()){
-                                printf("Identifier %s is doubly declared", ident.c_str());
+                                printf("Line %d: Identifier %s is doubly declared", currLine, ident.c_str());
+                                errorFlag = true;
                             }
                             else {
                                 varTemp[ident];
+                                arrSize[ident] = 1;
                             }
                         }
                         $$.code = strdup(temp.c_str());
                     }
-	  |             identifiers COLON ARRAY L_SQUARE_BRACKET NUMBER R_SQUARE_BRACKET OF INTEGER {printf("declaration -> COLON ARRAY L_SQUARE_BRACKET NUMBER %d R_SQUARE_BRACKET OF INTEGER\n", $5);}
+	  |             identifiers COLON ARRAY L_SQUARE_BRACKET NUMBER R_SQUARE_BRACKET OF INTEGER 
+                    {
+                        std::string temp;
+                        if($5 < 1){
+                            printf("Line %d: Array cannot have size <1", currLine);
+                            errorFlag = true;
+                        }
+                        temp.append($1.code);
+                        int pos;
+                        std::string ident;
+                        while(temp.find("|") != std::string::npos){
+                            pos = temp.find("|");
+                            temp.replace(pos, 1, "[]");
+                            pos += 3;
+                            ident = temp.substr(pos, (temp.find("\n", pos) - pos));
+                            pos = temp.find("\n", pos);
+                            temp.insert(pos, ", " + std::to_string($5));
+                            if (reserved.find(ident) != reserved.end()){
+                                printf("Line %d: Invalid identifier, %s is reserved", currLine, ident.c_str());
+                                errorFlag = true;
+                            }
+                            else if(funcs.find(ident) != funcs.end() && varTemp.find(ident) != varTemp.end()){
+                                printf("Line %d: Identifier %s is doubly declared", currLine, ident.c_str());
+                                errorFlag = true;
+                            }
+                            else {
+                                varTemp[ident];
+                                arrSize[ident] = $5;
+                            }
+                        }
+                        $$.code = strdup(temp.c_str());
+                    }
     ;
 
 statements: 	    statement SEMICOLON statements 
@@ -150,7 +207,7 @@ statements: 	    statement SEMICOLON statements
                         std::string temp;
                         temp.append($1.code);
                         temp.append($3.code);
-                        $$.code = strdup(temp);
+                        $$.code = strdup(temp.c_str());
                     }
   	|               statement SEMICOLON 
                     {
@@ -166,42 +223,107 @@ statement:	        var ASSIGN expression
                             temp.append("[]= ");
                         else
                             temp.append("= ");
-                        temp += $1.place + ", " + $3.place "\n";
-                        $$.code = strdup(temp.cstring());
+                        temp.append($1.place);
+                        temp.append(", ");
+                        temp.append($3.place);
+                        temp.append("\n");
+                        $$.code = strdup(temp.c_str());
                     }
     |               IF boolexpr THEN statements ENDIF
-		    {
-			std::string temp;
-			std::string start = new_label();
-			std::string end = new_label();
-			temp.append($2.code);
-			temp += "?:= " + start + ", " + $2.place + "\n";
-			temp += ":= " + end + "\n";
-			temp += ": " + start + "\n";
-			term.append($4.code);
-			term += ": " + end + "\n";
-		   	$$.code = strdup(temp.c_str());
-		    }
-    |               IF boolexpr THEN statements ELSE statements ENDIF 
-		    {
+                    {
                         std::string temp;
                         std::string start = new_label();
                         std::string end = new_label();
                         temp.append($2.code);
                         temp += "?:= " + start + ", " + $2.place + "\n";
-			temp.append($6.code);
                         temp += ":= " + end + "\n";
                         temp += ": " + start + "\n";
-                        term.append($4.code);
-                        term += ": " + end + "\n";
+                        temp.append($4.code);
+                        temp += ": " + end + "\n";
+                        $$.code = strdup(temp.c_str());
+                    }
+    |               IF boolexpr THEN statements ELSE statements ENDIF 
+                    {
+                        std::string temp;
+                        std::string start = new_label();
+                        std::string end = new_label();
+                        temp.append($2.code);
+                        temp += "?:= " + start + ", " + $2.place + "\n";
+			            temp.append($6.code);
+                        temp += ":= " + end + "\n";
+                        temp += ": " + start + "\n";
+                        temp.append($4.code);
+                        temp += ": " + end + "\n";
                         $$.code = strdup(temp.c_str());
                     }			
-	|               WHILE boolexpr BEGINLOOP statements ENDLOOP {printf("statement -> WHILE boolexpr BEGINLOOP statements ENDLOOP\n");}
-    |               DO BEGINLOOP statements ENDLOOP WHILE boolexpr {printf("statement -> DO BEGINLOOP statements ENDLOOP WHILE boolexpr\n");}
-    |               READ vars {printf("statement -> READ vars\n");}
-    |               WRITE vars {printf("statement -> WRITE vars\n");}
-    |               CONTINUE {printf("statement -> CONTINUE\n");}
-    |               RETURN expression {printf("statement -> RETURN expression\n");}
+	|               WHILE boolexpr BEGINLOOP statements ENDLOOP 
+                    {
+                        std::string temp;
+                        std::string before = new_label();
+                        std::string start = new_label();
+                        std::string end = new_label();
+                        temp.append($2.code);
+                        temp += ": " + before + "\n";
+                        temp += "?:= " + start + ", " + $2.place + "\n";
+                        temp += ":= " + end + "\n";
+                        temp += ": " + start + "\n";
+                        temp.append($4.code);
+                        temp += ":= " + before + "\n";
+                        temp += ": " + end + "\n";
+                        while (temp.find("CONTINUE") != std::string::npos){
+                            temp.replace(temp.find("CONTINUE"), 8, ":= " + before);
+                        }
+                        $$.code = strdup(temp.c_str());
+                    }
+    |               DO BEGINLOOP statements ENDLOOP WHILE boolexpr 
+                    {
+                        std::string temp;
+                        std::string start = new_label();
+                        std::string end = new_label();
+                        temp.append($6.code);
+                        temp += ": " + start + "\n"; 
+                        temp.append($3.code);
+                        temp += ": " + end + "\n"; 
+                        temp += "?:= " + start + ", " + $6.place + "\n";
+                        while (temp.find("CONTINUE") != std::string::npos){
+                            temp.replace(temp.find("CONTINUE"), 8, ":= " + end);
+                        }
+                        $$.code = strdup(temp.c_str());
+                    }
+    |               READ vars 
+                    {
+                        std::string temp;
+                        temp.append($2.code);
+                        while(temp.find("|") != std::string::npos){
+                            int pos = temp.find("|");
+                            temp.replace(pos, 1, "<");
+                        }
+                        $$.code = strdup(temp.c_str());
+                    }
+    |               WRITE vars 
+                    {
+                        std::string temp;
+                        temp.append($2.code);
+                        while(temp.find("|") != std::string::npos){
+                            int pos = temp.find("|");
+                            temp.replace(pos, 1, "<");
+                        }
+                        $$.code = strdup(temp.c_str());
+                    }
+    |               CONTINUE 
+                    {
+                        std::string temp = "CONTINUE\n";
+                        $$.code = strdup(temp.c_str());
+                    }
+    |               RETURN expression 
+                    {
+                        std::string temp;
+                        temp.append($2.code);
+                        temp.append("ret ");
+                        temp.append($2.place);
+                        temp.append("\n");
+                        $$.code = strdup(temp.c_str()); 
+                    }
     ;
 
 boolexpr: 	        relationandexpr 
@@ -273,9 +395,9 @@ relationexpr:	    expression comp expression
                     {
                         std::string dst = new_temp();
                         std::string temp;
-                        temp.append($1.code);
-                        temp.append($3.code);
-                        temp += ". " + dst + "\n" + $2.place + dst + ", " + $1.place + ", " + $3.place + "\n";
+                        temp.append($2.code);
+                        temp.append($4.code);
+                        temp += ". " + dst + "\n" + $3.place + dst + ", " + $2.place + ", " + $4.place + "\n";
                         temp += "! " + dst + ", " + dst + "\n";
                         $$.code = strdup(temp.c_str());
                         $$.place = strdup(dst.c_str());
@@ -341,7 +463,7 @@ comp:		        EQ
 vars:               var 
                     {
                         std::string temp;
-                        temp.append($1.code)
+                        temp.append($1.code);
                         if ($1.arr)
                             temp.append(".[]| ");
                         else
@@ -354,7 +476,7 @@ vars:               var
     |               var COMMA vars 
                     {
                         std::string temp;
-                        temp.append($1.code)
+                        temp.append($1.code);
                         if ($1.arr)
                             temp.append(".[]| ");
                         else
@@ -370,25 +492,31 @@ vars:               var
 identifiers:        identifier COMMA identifiers 
                     {
                         std::string temp;
-                        temp += ".| " + $1.place + "\n";
+                        temp.append(".| ");
+                        temp.append($1.place);
+                        temp.append("\n");
                         temp.append($3.code);
-                        $$.code = strdup(temp).c_str();
+                        $$.code = strdup(temp.c_str());
 
                     }
     |               identifier 
                     {
                         std::string temp;
-                        temp += ".| " + $1.place + "\n";
-                        $$.code = strdup(temp).c_str();
+                        temp.append(".| ");
+                        temp.append($1.place);
+                        temp.append("\n");
+                        $$.code = strdup(temp.c_str());
                     }
     ;
 
 identifier:         IDENT 
                     {
                         std::string temp;
-                        std::string ident = $1.place;
-                        if(funcs.find(ident) == funcs.end() && varTemp.find(ident) == varTemp.end())
-                            printf("Identifier %s is not declared\n", ident.c_str());//Error message
+                        std::string ident = $1;
+                        if(funcs.find(ident) == funcs.end() && varTemp.find(ident) == varTemp.end()){
+                            printf("Line %d: Identifier %s is not declared\n", currLine, ident.c_str());//Error message
+                            errorFlag = true;
+                        }
                         $$.code = strdup("");//No code
                         $$.place = strdup(ident.c_str());//Place is identifier name
                     }
@@ -566,7 +694,7 @@ term:               var
                         temp.append(". ");
                         temp.append(dst);//Declare new identifier
                         temp.append("\n");
-                        temp = temp + "= " + dst + ", " + std::to_string($1) + "\n";//Assign value to dst
+                        temp = temp + "= " + dst + ", " + std::to_string($2) + "\n";//Assign value to dst
                         temp += "* " + dst + ", " + dst + ", -1\n";//Flip sign
                         $$.code = strdup(temp.c_str());
                         $$.place = strdup(dst.c_str());//Value is now saved in dst
@@ -580,12 +708,12 @@ term:               var
                     {
                         std::string dst = new_temp();
                         std::string temp;
-                        temp.append($2.code);
+                        temp.append($3.code);
                         temp.append(". ");
                         temp.append(dst);//Declare new identifier
                         temp.append("\n");
                         temp += "= " + dst + ", ";
-                        temp.append($2.place);//Assign the value from the var to the identifier
+                        temp.append($3.place);//Assign the value from the var to the identifier
                         temp.append("\n");
                         temp += "* " + dst + ", " + dst + ", -1\n";//Flip sign
                         $$.code = strdup(temp.c_str());
@@ -595,8 +723,10 @@ term:               var
                     {
                         std::string temp;
                         std::string func = $1.place;
-                        if (funcs.find(func) == funcs.end())
-                            printf("Calling undeclared function %s\n", func.c_str());//Error message
+                        if (funcs.find(func) == funcs.end()){
+                            printf("Line %d: Calling undeclared function %s\n", currLine, func.c_str());//Error message
+                            errorFlag = true;
+                        }
                         std::string dst = new_temp();
                         temp.append($3.code);
                         temp += ". " + dst + "\ncall ";
@@ -611,8 +741,10 @@ var:                identifier
                     {
                         std::string temp;
                         std::string ident = $1.place;
-                        if (arrSize[ident] > 1)
-                            printf("Did not provide index for array identifier %s\n", ident.c_str());//Error message
+                        if (arrSize[ident] > 1){
+                            printf("Line %d: Did not provide index for array identifier %s\n", currLine, ident.c_str());//Error message
+                            errorFlag = true;
+                        }
                         $$.code = strdup("");//No code
                         $$.place = $1.place;//
                         $$.arr = false;
@@ -621,8 +753,10 @@ var:                identifier
                     {
                         std::string temp;
                         std::string ident = $1.place;
-                        if (arrSize[ident] == 1)
-                            printf("Provided index for non array identifier %s\n", ident.c_str());
+                        if (arrSize[ident] == 1){
+                            printf("Line %d: Provided index for non array identifier %s\n", currLine, ident.c_str());
+                            errorFlag = true;
+                        }
                         temp.append($1.place);
                         temp.append(", ");
                         temp.append($3.place);
@@ -667,6 +801,8 @@ int main(int argc, char **argv) {
       if(yyin == NULL){
          yyin = stdin;
       }
+      else
+        filename = argv[1];
    }
    else
       yyin = stdin;
