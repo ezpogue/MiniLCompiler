@@ -6,3 +6,4 @@ miniL-lex.cpp
 miniL-parser.cpp
 miniL-parser.hpp
 stack.hh
+*.mil

@@ -18,6 +18,7 @@ std::map<std::string, std::string> varTemp;
 std::map<std::string, int> arrSize;//Keeps track of array sizes associated with 
 bool mainFunc = false;//Keeps track of if main is declared or not
 std::set<std::string> funcs;//Holds all function names
+std::set<std::string> functemp;
 std::set<std::string> reserved {"FUNCTION", "BEGIN_PARAMS", "END_PARAMS", "BEGIN_LOCALS", "END_LOCALS", "BEGIN_BODY", "END_BODY", "INTEGER", "ARRAY", "ENUM", "OF", "IF", "THEN",
 "ENDIF", "ELSE", "WHILE", "FOR", "DO", "BEGINLOOP", "ENDLOOP", "CONTINUE", "READ", "WRITE", "TRUE", "FALSE", "SEMICOLON", "COLON", "COMMA", "L_PAREN", "R_PAREN",
 "L_SQUARE_BRACKET", "R_SQUARE_BRACKET", "ASSIGN", "RETURN", "IDENT", "NUMBER", "ADD", "SUB", "MOD", "MULT", "DIV", "LT", "LTE", "GT", "GTE", "EQ", "NEQ", "NOT", "AND", "OR",
@@ -66,7 +67,8 @@ program:            functions
                             exit(1);
                         }
                         else{
-                            strcat(filename, ".mil");
+                            char* lastchar = strrchr(filename, 'n');
+                            *lastchar = 'l'; 
                             FILE * output;
                             output = fopen(filename, "w");
                             if(output != NULL){
@@ -83,6 +85,14 @@ functions:          /*empty*/
                             printf("Line %d: No main function declared", currLine);
                             errorFlag = true;
                         }
+                        for(std::set<std::string>::iterator it = functemp.begin(); it != functemp.end(); it++){
+                            if (funcs.find(*it) == funcs.end()){
+                                std::string func = *it;
+                                printf("Line %d: Funtion %s is undeclared\n", currLine, func.c_str());//Error message
+                                errorFlag = true;
+                            }
+                        }
+
                     }	
     |               function functions 
                     {   
@@ -95,7 +105,7 @@ functions:          /*empty*/
 
 function:	        FUNCTION identifier SEMICOLON BEGIN_PARAMS declarations END_PARAMS BEGIN_LOCALS declarations END_LOCALS BEGIN_BODY statements END_BODY 
                     {
-                        std::string temp = "func";
+                        std::string temp = "func ";
                         temp.append($2.place);
                         temp.append("\n");
                         std::string s = $2.place;
@@ -513,10 +523,6 @@ identifier:         IDENT
                     {
                         std::string temp;
                         std::string ident = $1;
-                        if(funcs.find(ident) == funcs.end() && varTemp.find(ident) == varTemp.end()){
-                            printf("Line %d: Identifier %s is not declared\n", currLine, ident.c_str());//Error message
-                            errorFlag = true;
-                        }
                         $$.code = strdup("");//No code
                         $$.place = strdup(ident.c_str());//Place is identifier name
                     }
@@ -683,7 +689,7 @@ term:               var
                         temp.append(". ");
                         temp.append(dst);//Declare new identifier
                         temp.append("\n");
-                        temp = temp + "= " + dst + ", " + std::to_string($1);//Assign value to dst
+                        temp = temp + "= " + dst + ", " + std::to_string($1) + "\n";//Assign value to dst
                         $$.code = strdup(temp.c_str());
                         $$.place = strdup(dst.c_str());
                     }
@@ -723,10 +729,7 @@ term:               var
                     {
                         std::string temp;
                         std::string func = $1.place;
-                        if (funcs.find(func) == funcs.end()){
-                            printf("Line %d: Calling undeclared function %s\n", currLine, func.c_str());//Error message
-                            errorFlag = true;
-                        }
+                        functemp.insert(func);
                         std::string dst = new_temp();
                         temp.append($3.code);
                         temp += ". " + dst + "\ncall ";
@@ -741,6 +744,10 @@ var:                identifier
                     {
                         std::string temp;
                         std::string ident = $1.place;
+                        if(funcs.find(ident) == funcs.end() && varTemp.find(ident) == varTemp.end()){
+                            printf("Line %d: Identifier %s is not declared\n", currLine, ident.c_str());//Error message
+                            errorFlag = true;
+                        }
                         if (arrSize[ident] > 1){
                             printf("Line %d: Did not provide index for array identifier %s\n", currLine, ident.c_str());//Error message
                             errorFlag = true;
@@ -753,6 +760,10 @@ var:                identifier
                     {
                         std::string temp;
                         std::string ident = $1.place;
+                        if(funcs.find(ident) == funcs.end() && varTemp.find(ident) == varTemp.end()){
+                            printf("Line %d: Identifier %s is not declared\n", currLine, ident.c_str());//Error message
+                            errorFlag = true;
+                        }
                         if (arrSize[ident] == 1){
                             printf("Line %d: Provided index for non array identifier %s\n", currLine, ident.c_str());
                             errorFlag = true;
